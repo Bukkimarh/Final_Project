@@ -63,7 +63,7 @@ class MovieSearch:
             # Checking if reviews are available
             if review_data['response']['docs']:
                 print("\nMovie Reviews:")
-                # Loop through each article (review)
+                # Loop through each article
                 for article in review_data['response']['docs']:
                     print(f"Title: {article['headline']['main']}")
                     print(f"Snippet: {article['snippet']}")
@@ -91,5 +91,5 @@ if __name__ == "__main__":
     nyt_api_key = os.getenv("NYT_API_KEY")
 
     # Creating an instance of the app and running it
-    app = MovieReview(tmdb_api_key, nyt_api_key)  # Corrected here
+    app = MovieReview(tmdb_api_key, nyt_api_key)
     app.run("Inception")  
