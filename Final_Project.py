@@ -1,172 +1,195 @@
-import requests
 import os
-import time
-from dotenv import load_dotenv
+import asyncio
+import aiohttp
+import pandas as pd
+import seaborn as sns
 import matplotlib.pyplot as plt
-import numpy as np
+from dotenv import load_dotenv
 
 # Load API keys from .env file
 load_dotenv()
+TMDB_API_KEY = os.getenv("TMDB_API_KEY")
+NYT_API_KEY = os.getenv("NYT_API_KEY")
 
-class ActorAnalysis:
-    def __init__(self, tmdb_api_key, nyt_api_key):
-        """Initialize the ActorAnalysis class with TMDB and NYT API keys."""
-        self.tmdb_api_key = tmdb_api_key
-        self.nyt_api_key = nyt_api_key
-        self.tmdb_base_url = "https://api.themoviedb.org/3/"
-        self.nyt_base_url = "https://api.nytimes.com/svc/search/v2/articlesearch.json"
+class APIBase:
+    """Base class to interact with APIs asynchronously"""
+    def __init__(self, base_url, api_key):
+        self.base_url = base_url
+        self.api_key = api_key
 
-    def get_person_id(self, person_name):
-        """Fetch the TMDB ID for a given person."""
-        params = {"api_key": self.tmdb_api_key, "query": person_name}
-        response = requests.get(f"{self.tmdb_base_url}search/person", params=params)
-        if response.status_code == 200:
-            data = response.json()
-            results = data.get("results", [])
-            if results:
-                print(f"Found person ID: {results[0]['id']} for {person_name}")
-                return results[0]['id']
-            else:
-                print(f"No person found for {person_name}.")
-                return None
-        else:
-            print(f"Error fetching person ID: {response.status_code}")
-            return None
+class TMDBAPI(APIBase):
+    """Class to interact with the TMDb API asynchronously"""
+    def __init__(self, api_key):
+        super().__init__("https://api.themoviedb.org/3/", api_key)
 
-    def fetch_movies_by_person(self, person_id, start_year, end_year):
-        """Fetch movies starring a specific person between start_year and end_year."""
-        movies = []
+    async def get_genre_id(self, session, genre_name):
+        """Fetch the TMDb ID for a given genre name."""
+        url = f"{self.base_url}genre/movie/list"
+        params = {"api_key": self.api_key, "language": "en-US"}
+        async with session.get(url, params=params) as response:
+            if response.status == 200:
+                genres = (await response.json()).get("genres", [])
+                for genre in genres:
+                    if genre["name"].lower() == genre_name.lower():
+                        return genre["id"]
+        raise ValueError(f"Genre '{genre_name}' not found.")
+
+    async def fetch_movies(self, session, genre_id, page, start_year, end_year):
+        """Fetch movies by genre ID for a specific range of years on a specific page."""
+        url = f"{self.base_url}discover/movie"
         params = {
-            "api_key": self.tmdb_api_key,
-            "language": "en-US",
-            "sort_by": "release_date.asc",
-            "include_adult": False,
+            "api_key": self.api_key,
+            "with_genres": genre_id,
             "primary_release_date.gte": f"{start_year}-01-01",
             "primary_release_date.lte": f"{end_year}-12-31",
-            "with_cast": person_id,
+            "page": page,
+            "sort_by": "popularity.desc",
+            "vote_count.gte": 1
         }
-        response = requests.get(f"{self.tmdb_base_url}discover/movie", params=params)
-        if response.status_code == 200:
-            data = response.json()
-            for movie in data['results']:
-                release_date = movie.get("release_date", "Unknown Date")
-                rating = movie.get("vote_average", 0.0)
-                title = movie.get("title", "Unknown Title")
-                movies.append({"title": title, "rating": rating, "release_date": release_date})
-        else:
-            print(f"Error fetching movies: {response.status_code}")
-        return movies
+        async with session.get(url, params=params) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                raise Exception(f"Error fetching movies: {response.status}")
 
-    def fetch_nyt_reviews(self, movie_title):
-        """Fetch the number of NYT reviews for a specific movie title."""
-        params = {
-            "q": movie_title,
-            "fq": 'section_name:"Movies" AND type_of_material:"Review"',
-            "api-key": self.nyt_api_key
-        }
-        response = requests.get(self.nyt_base_url, params=params)
-        if response.status_code == 200:
-            review_data = response.json()
-            return len(review_data['response']['docs'])  # Count of reviews
-        elif response.status_code == 429:
-            print(f"Rate limit hit for {movie_title}. Retrying after delay...")
-            time.sleep(5)  # Pause to prevent further rate limits
-            return self.fetch_nyt_reviews(movie_title)
-        else:
-            print(f"Error fetching NYT reviews for {movie_title}: {response.status_code}")
-            return 0
+class NYTAPI(APIBase):
+    """Class to interact with the New York Times API"""
+    def __init__(self, api_key):
+        super().__init__("https://api.nytimes.com/svc/search/v2/articlesearch.json", api_key)
 
-    def analyze_actor(self, actor_name, start_year, end_year):
-        """Analyze movies of a specific actor within a time period."""
-        person_id = self.get_person_id(actor_name)
-        if not person_id:
-            return []
+    async def fetch_mentions(self, session, query, start_year, end_year):
+        """Fetch the number of mentions of a keyword in NYT articles with rate-limiting."""
+        total_mentions = 0
+        for year in range(start_year, end_year + 1):
+            url = self.base_url
+            params = {
+                "q": query,
+                "api-key": self.api_key,
+                "facet": "false",
+                "begin_date": f"{year}0101",
+                "end_date": f"{year}1231",
+            }
+            retry_attempts = 3  # Number of retries for each request
+            while retry_attempts > 0:
+                async with session.get(url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        total_mentions += data.get('response', {}).get('meta', {}).get('hits', 0)
+                        break
+                    elif response.status == 429:  # Too Many Requests
+                        print(f"Rate limit hit. Retrying for {query} in {year} after a delay...")
+                        await asyncio.sleep(10)  # Wait 10 seconds before retrying
+                        retry_attempts -= 1
+                    else:
+                        print(f"Error fetching mentions for {query} in {year}: {response.status}")
+                        break
+        return total_mentions
 
-        movies = self.fetch_movies_by_person(person_id, start_year, end_year)
-        analysis_results = []
+class MultiYearGenreCalculator:
+    """Class to calculate ratings and mentions for multiple years and genres."""
+    def __init__(self, tmdb_api_key, nyt_api_key):
+        self.tmdb = TMDBAPI(tmdb_api_key)
+        self.nyt = NYTAPI(nyt_api_key)
 
-        for movie in movies:
-            title = movie['title']
-            rating = movie['rating']
-            nyt_reviews = self.fetch_nyt_reviews(title)
-            analysis_results.append({"title": title, "rating": rating, "nyt_reviews": nyt_reviews})
+    async def calculate_ratings_and_mentions(self, genres, year_ranges, sample_pages):
+        """Calculate ratings and mentions for multiple genres and year ranges."""
+        async with aiohttp.ClientSession() as session:
+            results = []
+            seen_results = set()  # To track unique entries
+            for start_year, end_year in year_ranges:
+                print(f"\nCalculating ratings and mentions for years {start_year}-{end_year}...")
+                for genre in genres:
+                    print(f"Processing genre: {genre}")
+                    try:
+                        genre_id = await self.tmdb.get_genre_id(session, genre)
+                        avg_rating = await self._calculate_ratings_for_range(
+                            session, genre_id, start_year, end_year, sample_pages
+                        )
+                        mentions = await self.nyt.fetch_mentions(session, genre, start_year, end_year)
+                        result = (genre, f"{start_year}-{end_year}", avg_rating, mentions)
+                        if result not in seen_results:  # Avoid duplicates
+                            seen_results.add(result)
+                            results.append({
+                                "Genre": genre,
+                                "YearRange": f"{start_year}-{end_year}",
+                                "AverageRating": avg_rating,
+                                "Mentions": mentions
+                            })
+                    except ValueError as e:
+                        print(e)
+            return results
 
-        return analysis_results
+    async def _calculate_ratings_for_range(self, session, genre_id, start_year, end_year, sample_pages):
+        """Helper method to calculate average ratings for a specific range."""
+        total_rating = 0
+        total_movies = 0
+        tasks = [
+            self.tmdb.fetch_movies(session, genre_id, page, start_year, end_year)
+            for page in range(1, sample_pages + 1)
+        ]
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for response in responses:
+            if isinstance(response, Exception):
+                print(response)
+                continue
+            movies = response.get("results", [])
+            for movie in movies:
+                total_rating += movie.get("vote_average", 0)
+                total_movies += 1
+
+        if total_movies > 0:
+            return total_rating / total_movies
+        return None
+
+async def main():
+    genres = ["Action", "Drama", "Comedy"]
+    year_ranges = [(2020, 2021), (2021, 2022), (2022, 2023), (2023, 2024)]
+    sample_pages = 5  # Number of pages to sample
+
+    calculator = MultiYearGenreCalculator(TMDB_API_KEY, NYT_API_KEY)
+    ratings_and_mentions = await calculator.calculate_ratings_and_mentions(genres, year_ranges, sample_pages)
+
+    # Convert results to DataFrame for visualization
+    df = pd.DataFrame(ratings_and_mentions).drop_duplicates()  # Drop duplicates
+    print("\nRatings and Mentions DataFrame:")
+    print(df)
+
+    # Filter out rows with missing data
+    df = df.dropna(subset=["AverageRating"])
+
+    # Plotting with Seaborn
+    sns.set(style="whitegrid")
+    plt.figure(figsize=(12, 8))
+    sns.lineplot(
+        data=df,
+        x="YearRange",
+        y="AverageRating",
+        hue="Genre",
+        marker="o"
+    )
+    plt.title("Average Movie Ratings by Genre Over Time")
+    plt.xlabel("Year Range")
+    plt.ylabel("Average Rating")
+    plt.legend(title="Genre")
+    plt.tight_layout()
+    plt.show()
+
+    # Mentions Plot
+    plt.figure(figsize=(12, 8))
+    sns.barplot(
+        data=df,
+        x="YearRange",
+        y="Mentions",
+        hue="Genre"
+    )
+    plt.title("Mentions by Genre in NYT Over Time")
+    plt.xlabel("Year Range")
+    plt.ylabel("Mentions")
+    plt.legend(title="Genre")
+    plt.tight_layout()
+    plt.show()
 
 if __name__ == "__main__":
-    # Load API keys from environment variables
-    tmdb_api_key = os.getenv("TMDB_API_KEY")
-    nyt_api_key = os.getenv("NYT_API_KEY")
+    asyncio.run(main())
 
-    # Ensure API keys are loaded
-    if not tmdb_api_key or not nyt_api_key:
-        print("Error: Missing API keys! Please check your .env file.")
-    else:
-        print("API keys loaded successfully!")
-
-        # Create an instance of ActorAnalysis
-        analysis = ActorAnalysis(tmdb_api_key, nyt_api_key)
-
-        # Analyze Will Smith and Adam Sandler movies between 2010 and 2020
-        actors = ["Will Smith", "Adam Sandler"]
-        start_year, end_year = 2010, 2020
-
-        results_summary = {}
-        for actor in actors:
-            print(f"\nFetching data for {actor}...\n")
-            results = analysis.analyze_actor(actor, start_year, end_year)
-
-            # Calculate metrics
-            num_movies = len(results)
-            avg_rating = sum(movie['rating'] for movie in results) / num_movies if num_movies > 0 else 0
-            total_nyt_reviews = sum(movie['nyt_reviews'] for movie in results)
-
-            results_summary[actor] = {
-                "num_movies": num_movies,
-                "avg_rating": avg_rating,
-                "nyt_reviews": total_nyt_reviews,
-            }
-
-            print(f"Analysis for {actor} ({start_year}-{end_year}):")
-            print(f"Number of Movies: {num_movies}")
-            print(f"Average TMDB Rating: {avg_rating:.2f}")
-            print(f"Total NYT Reviews: {total_nyt_reviews}")
-            print("\nDetailed Results:")
-            for movie in results:
-                print(f"{movie['title']} - Rating: {movie['rating']} - NYT Reviews: {movie['nyt_reviews']}")
-
-        # Visualization
-actors = ['Will Smith', 'Adam Sandler']
-average_ratings = [5.59, 6.10]  # Replace with actual averages
-nyt_reviews = [139, 127]       # Replace with actual totals
-
-# Create a side-by-side bar chart
-x = np.arange(len(actors))  # Actor positions
-width = 0.35  # Bar width
-
-fig, ax = plt.subplots(figsize=(10, 6))
-bar1 = ax.bar(x - width/2, average_ratings, width, label='Average TMDB Ratings', color='steelblue')
-bar2 = ax.bar(x + width/2, nyt_reviews, width, label='NYT Review Counts', color='coral')
-
-# Add labels, title, and legend
-ax.set_xlabel('Actors')
-ax.set_ylabel('Values')
-ax.set_title('Comparison of Ratings and NYT Reviews (2010-2020)')
-ax.set_xticks(x)
-ax.set_xticklabels(actors)
-ax.legend()
-
-# Add values on top of bars
-def add_values(bars):
-    for bar in bars:
-        height = bar.get_height()
-        ax.annotate(f'{height:.1f}', 
-                    xy=(bar.get_x() + bar.get_width() / 2, height),
-                    xytext=(0, 3),  # Offset text
-                    textcoords="offset points",
-                    ha='center', va='bottom')
-
-add_values(bar1)
-add_values(bar2)
-plt.tight_layout()
-plt.show()
