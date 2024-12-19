@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from dotenv import load_dotenv
 
-# Load API keys from .env file
+# Loading  API keys from .env file
 load_dotenv()
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 NYT_API_KEY = os.getenv("NYT_API_KEY")
@@ -40,7 +40,7 @@ class TMDBAPI(APIBase):
             print(f"Error occurred in TMDBAPI.get_person_id: {e}")
 
     async def fetch_movies(self, session, person_id, start_year, end_year):
-        """Fetch movies starring a specific person within a time frame."""
+        #Fetching  movies starring a specific person within a time frame.
         url = f"{self.base_url}discover/movie"
         params = {
             "api_key": self.api_key,
@@ -59,7 +59,7 @@ class TMDBAPI(APIBase):
             print(f"Error occurred in TMDBAPI.fetch_movies: {e}")
 
 class NYTAPI(APIBase):
-    """Class to interact with the New York Times API asynchronously"""
+    # Creating a class to interact with the New York Times API asynchronously
     def __init__(self, api_key):
         super().__init__("https://api.nytimes.com/svc/search/v2/articlesearch.json", api_key)
 
@@ -75,10 +75,10 @@ class NYTAPI(APIBase):
             async with session.get(url, params=params) as response:
                 if response.status == 200:
                     review_data = await response.json()
-                    return len(review_data['response']['docs'])  # Count of reviews
+                    return len(review_data['response']['docs'])  
                 elif response.status == 429:
                     print(f"Rate limit hit for {movie_title}. Retrying after delay...")
-                    await asyncio.sleep(5)  # Pause to prevent further rate limits
+                    await asyncio.sleep(5)  
                     return await self.fetch_nyt_reviews(session, movie_title)
                 else:
                     raise Exception(f"Error fetching NYT reviews for {movie_title}: {response.status}")
@@ -86,22 +86,22 @@ class NYTAPI(APIBase):
             print(f"Error occurred in NYTAPI.fetch_nyt_reviews: {e}")
 
 class ActorAnalysis:
-    """Class to analyze movies of a specific actor with error handling."""
+    #Creating a class to analyze movies of a specific actor 
     def __init__(self, tmdb_api_key, nyt_api_key):
         self.tmdb = TMDBAPI(tmdb_api_key)
         self.nyt = NYTAPI(nyt_api_key)
 
     async def analyze_actor(self, actor_name, start_year, end_year):
-        """Analyze movies of a specific actor within a time period."""
+        #Analyzing movies of a specific actor within 2020 - 2024
         async with aiohttp.ClientSession() as session:
             try:
-                # Get person ID from TMDB
+                # Getting person ID from TMDB
                 person_id = await self.tmdb.get_person_id(session, actor_name)
                 if not person_id:
                     print(f"No person found for {actor_name}.")
                     return []
 
-                # Fetch movies for the actor
+                # Fetching movies for the actor
                 movies_data = await self.tmdb.fetch_movies(session, person_id, start_year, end_year)
                 if not movies_data:
                     print(f"No movies found for {actor_name}.")
@@ -153,7 +153,7 @@ async def main():
         else:
             print(f"No data found for {actor}.")
 
-    # Visualization
+    # Creating a graph for visulization
     actors = list(results_summary.keys())
     num_movies = [results_summary[actor]['num_movies'] for actor in actors]
     avg_ratings = [results_summary[actor]['avg_rating'] for actor in actors]
