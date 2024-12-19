@@ -134,7 +134,7 @@ async def main():
 
         if results:
             num_movies = len(results)
-            avg_rating = sum(movie['rating'] for movie in results) / num_movies if num_movies > 0 else 0
+            avg_rating = round(sum(movie['rating'] for movie in results) / num_movies, 2) if num_movies > 0 else 0
             total_nyt_reviews = sum(movie['nyt_reviews'] for movie in results)
 
             results_summary[actor] = {
@@ -164,7 +164,7 @@ async def main():
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    bars1 = ax.bar(x - bar_width, num_movies, bar_width, label="Number of Movies", color="skyblue")
+    bars1 = ax.bar(x - bar_width, num_movies, bar_width, label="Number of Movies and events", color="skyblue")
     bars2 = ax.bar(x, avg_ratings, bar_width, label="Average Rating", color="lightgreen")
     bars3 = ax.bar(x + bar_width, nyt_reviews, bar_width, label="NYT Reviews", color="salmon")
 
