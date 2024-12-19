@@ -11,18 +11,18 @@ TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 NYT_API_KEY = os.getenv("NYT_API_KEY")
 
 class APIBase:
-    """Base class to interact with APIs asynchronously"""
+    #Creating a parent for the child class to inherit from and also to interact with APIs asynchronously"""
     def __init__(self, base_url, api_key):
         self.base_url = base_url
         self.api_key = api_key
 
 class TMDBAPI(APIBase):
-    """Class to interact with the TMDb API asynchronously"""
+    #Creating a class to interact with the TMDb API asynchronously
     def __init__(self, api_key):
         super().__init__("https://api.themoviedb.org/3/", api_key)
 
     async def get_person_id(self, session, person_name):
-        """Fetch the TMDb ID for a given person."""
+        # Fetching the TMDb ID for the A-list actors
         url = f"{self.base_url}search/person"
         params = {"api_key": self.api_key, "query": person_name}
         try:
@@ -64,7 +64,7 @@ class NYTAPI(APIBase):
         super().__init__("https://api.nytimes.com/svc/search/v2/articlesearch.json", api_key)
 
     async def fetch_nyt_reviews(self, session, movie_title):
-        """Fetch the number of NYT reviews for a specific movie title."""
+        #Fetching the number of NYT reviews for movie titles
         url = self.base_url
         params = {
             "q": movie_title,
