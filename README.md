@@ -1,5 +1,5 @@
 # Final Project 
-# Movie Performance Analysis: Post-COVID Era
+# Genres & Stardom Analytics Project
 *** Link to Presentation ***
 https://baruch.zoom.us/rec/share/-mwXd2R6YsKSuS3ErTdQKiE5ZmdVNUzMYI9MxRgXDVKV0KS8uaZAWZdcS7Aj3YyF.QtxYkRkic0KAStEv&nbsp;
 Passcode: d^0Lh+39
