@@ -1,3 +1,4 @@
+# Jeremiah was the one who did this code but because we were having issues merging I had to be the one to commit the code for him.
 import os
 import asyncio
 import aiohttp
@@ -192,4 +193,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
