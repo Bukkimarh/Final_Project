@@ -1,6 +1,8 @@
 # Final Project 
 # Movie Performance Analysis: Post-COVID Era
-
+*** Link to Presentation ***
+https://baruch.zoom.us/rec/share/-mwXd2R6YsKSuS3ErTdQKiE5ZmdVNUzMYI9MxRgXDVKV0KS8uaZAWZdcS7Aj3YyF.QtxYkRkic0KAStEv&nbsp;
+Passcode: d^0Lh+39
 ## Project Description
 In the post-COVID era, the film industry has evolved with streaming platforms, shifting audience preferences, and box office dynamics. This project, by Bukola and Jeremiah, analyzes patterns in movie performance using data from **TMDb** and **NYT**. We explore:
 - **Genres**: Trends in popularity and critical reception.
